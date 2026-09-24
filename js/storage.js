@@ -2,7 +2,7 @@
 const Storage = (() => {
   const LOCAL_STORAGE_KEY = "visiyosindo_links_data";
 
-  // Data contoh awal agar dashboard tidak kosong saat pertama dibuka
+  // Data contoh awal
   const defaultLinks = [
     {
       id: "link-1",
@@ -10,8 +10,8 @@ const Storage = (() => {
       slug: "wa-admin",
       targetUrl: "https://wa.me/6281234567890?text=Halo%20Visiyosindo,%20saya%20tertarik%20dengan%20layanan%20Anda",
       clicks: 42,
-      createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-      updatedAt: new Date(Date.now() - 86400000 * 3).toISOString()
+      createdAt: "2026-09-23T10:00:00.000Z",
+      updatedAt: "2026-09-23T10:00:00.000Z"
     },
     {
       id: "link-2",
@@ -19,39 +19,24 @@ const Storage = (() => {
       slug: "katalog",
       targetUrl: "https://drive.google.com/file/d/1example-portfolio-visiyosindo/view",
       clicks: 128,
-      createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-      updatedAt: new Date(Date.now() - 86400000 * 1).toISOString()
-    },
-    {
-      id: "link-3",
-      title: "Lokasi Kantor & Maps",
-      slug: "lokasi",
-      targetUrl: "https://maps.google.com/?q=Jakarta",
-      clicks: 19,
-      createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-      updatedAt: new Date(Date.now() - 86400000 * 10).toISOString()
+      createdAt: "2026-09-23T10:00:00.000Z",
+      updatedAt: "2026-09-23T10:00:00.000Z"
     }
   ];
 
-  // Inisialisasi data lokal jika belum ada
-  async function initLocalStorage() {
-    if (!localStorage.getItem(LOCAL_STORAGE_KEY)) {
-      // Coba ambil dari /api/links.json jika ada
-      try {
-        const res = await fetch("/api/links.json");
-        if (res.ok) {
-          const json = await res.json();
-          if (Array.isArray(json) && json.length > 0) {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(json));
-            return;
-          }
-        }
-      } catch (e) {}
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultLinks));
+  // Inisialisasi data lokal sinkron & aman tanpa race condition
+  function initLocalStorage() {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!stored) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultLinks));
+      }
+    } catch (e) {
+      console.warn("LocalStorage tidak dapat diakses:", e);
     }
   }
 
-  // URL API dinamis: otomatis menyesuaikan apakah di root, subpath, atau offline
+  // URL API dinamis
   function getApiUrl(params = "") {
     let base = "/api/index.php";
     if (window.location.protocol === "file:") {
@@ -98,46 +83,47 @@ const Storage = (() => {
           updatedAt: item.updated_at
         }));
       } catch (e) {
-        console.warn("Gagal membaca Supabase, beralih ke local storage:", e);
+        console.warn("Gagal membaca Supabase:", e);
       }
     }
 
-    // 2. Jika mode PHP aktif
-    if (CONFIG.storageMode === "php") {
-      try {
-        const res = await fetch(getApiUrl("action=get"));
-        if (res.ok) {
-          const json = await res.json();
-          if (json.links) return json.links;
-        }
-      } catch (e) {
-        console.warn("API PHP belum aktif, menggunakan LocalStorage:", e);
-      }
-    }
-
-    // 3. LocalStorage (Prioritas Utama untuk mode local & GitHub Pages)
+    // 2. Baca dari LocalStorage
     initLocalStorage();
+    let localLinks = [];
     try {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) localLinks = parsed;
       }
     } catch (e) {}
 
-    // Fallback terakhir: baca /api/links.json statis
+    // 3. Sinkronkan dengan file server statis (/api/links.json) jika ada link baru dari repo
     try {
-      const res = await fetch("/api/links.json");
+      const res = await fetch("/api/links.json?t=" + Date.now());
       if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json) && json.length > 0) return json;
+        const serverLinks = await res.json();
+        if (Array.isArray(serverLinks) && serverLinks.length > 0) {
+          const existingSlugs = new Set(localLinks.map(l => (l.slug || "").toLowerCase().trim()));
+          let hasNew = false;
+          for (const sLink of serverLinks) {
+            const sSlug = (sLink.slug || "").toLowerCase().trim();
+            if (sSlug && !existingSlugs.has(sSlug)) {
+              localLinks.push(sLink);
+              hasNew = true;
+            }
+          }
+          if (hasNew) {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localLinks));
+          }
+        }
       }
     } catch (e) {}
 
-    return defaultLinks;
+    return localLinks.length > 0 ? localLinks : defaultLinks;
   }
 
-  // Mengambil 1 link berdasarkan slug (case-insensitive agar fleksibel)
+  // Mengambil 1 link berdasarkan slug (case-insensitive)
   async function getLinkBySlug(slug) {
     const cleanSlug = (slug || "").toLowerCase().trim();
     const links = await getAllLinks();
@@ -146,7 +132,7 @@ const Storage = (() => {
 
   // Menyimpan link baru
   async function createLink({ title, slug, targetUrl }) {
-    // Mempertahankan huruf besar & kecil, hanya spasi diubah ke strip (-) dan karakter tidak valid dibersihkan
+    // Mempertahankan huruf besar & kecil
     const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     if (!cleanSlug) throw new Error("Slug / Alias tidak boleh kosong!");
     if (!targetUrl) throw new Error("URL Tujuan tidak boleh kosong!");
@@ -178,24 +164,11 @@ const Storage = (() => {
           clicks: 0
         }]);
       } catch (err) {
-        console.warn("Gagal menyimpan ke Supabase, tersimpan di lokal:", err);
+        console.warn("Gagal menyimpan ke Supabase:", err);
       }
     }
 
-    // Simpan ke PHP jika aktif
-    if (CONFIG.storageMode === "php") {
-      try {
-        await fetch(getApiUrl("action=create"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newLink)
-        });
-      } catch (err) {
-        console.warn("Gagal menyimpan ke PHP server, tersimpan di lokal:", err);
-      }
-    }
-
-    // Selalu simpan ke LocalStorage agar link tidak pernah hilang di browser admin
+    // Selalu simpan ke LocalStorage agar langsung aktif
     initLocalStorage();
     try {
       const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
@@ -208,13 +181,12 @@ const Storage = (() => {
     return newLink;
   }
 
-  // Mengubah link yang sudah ada (edit URL tujuan atau slug)
+  // Mengubah link yang sudah ada
   async function updateLink(id, { title, slug, targetUrl }) {
-    // Mempertahankan huruf besar & kecil
     const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
 
-    // Cek duplikasi jika slug diganti (case-insensitive)
+    // Cek duplikasi slug
     const links = await getAllLinks();
     const existingWithSameSlug = links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug.toLowerCase() && l.id !== id);
     if (existingWithSameSlug) {
@@ -237,19 +209,7 @@ const Storage = (() => {
       }
     }
 
-    if (CONFIG.storageMode === "php") {
-      try {
-        await fetch(getApiUrl("action=update"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, title, slug: cleanSlug, targetUrl: cleanUrl })
-        });
-      } catch (err) {
-        console.warn("Gagal update PHP:", err);
-      }
-    }
-
-    // Selalu update LocalStorage
+    // Update LocalStorage
     initLocalStorage();
     try {
       const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
@@ -283,13 +243,6 @@ const Storage = (() => {
       }
     }
 
-    if (CONFIG.storageMode === "php") {
-      try {
-        await fetch(getApiUrl(`action=delete&id=${encodeURIComponent(id)}`));
-      } catch (err) {}
-    }
-
-    // Selalu hapus dari LocalStorage
     initLocalStorage();
     try {
       const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
@@ -303,7 +256,7 @@ const Storage = (() => {
   async function incrementClicks(slug) {
     const cleanSlug = (slug || "").toLowerCase().trim();
     const links = await getAllLinks();
-    const link = links.find(l => l.slug.toLowerCase().trim() === cleanSlug);
+    const link = links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug);
     if (!link) return null;
 
     link.clicks = (link.clicks || 0) + 1;
@@ -314,8 +267,6 @@ const Storage = (() => {
         .update({ clicks: link.clicks })
         .eq("id", link.id)
         .then();
-    } else if (CONFIG.storageMode === "php") {
-      fetch(getApiUrl(`action=click&slug=${encodeURIComponent(cleanSlug)}`)).catch(() => {});
     } else {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(links));
     }
