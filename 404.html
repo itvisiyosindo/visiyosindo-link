@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Mengarahkan...</title>
+  <script>
+    // SPA Fallback untuk Static Hosting (GitHub Pages / Netlify / Vercel)
+    // Ketika pengunjung membuka visiyosindo.id/Judul, server mengirim 404.html ini.
+    // Script ini mengambil slug dari URL dan meneruskannya ke redirect.html?go=Judul
+    (function() {
+      const pathname = window.location.pathname;
+      const slug = pathname.replace(/^\/+|\/+$/g, ""); // hilangkan slash awal & akhir
+      if (slug && !slug.includes(".")) {
+        window.location.replace("/redirect.html?go=" + encodeURIComponent(slug));
+      } else {
+        window.location.replace("/index.html");
+      }
+    })();
+  </script>
+</head>
+<body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+  <p>Mengarahkan ke tautan tujuan...</p>
+</body>
+</html>
