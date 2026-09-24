@@ -4,21 +4,20 @@ const CONFIG = {
   domain: "visiyosindo.id",
 
   // Mode Penyimpanan Data:
-  // - "local"    : Menggunakan browser LocalStorage (Cocok untuk GitHub Pages & personal use)
-  // - "supabase" : Menggunakan cloud Supabase (Rekomendasi jika link ingin diakses orang lain secara publik)
-  // - "php"      : Menggunakan endpoint PHP (khusus hosting cPanel)
-  storageMode: "local",
+  // - "supabase" : Menggunakan cloud Supabase (Link otomatis aktif global untuk semua pengunjung di seluruh dunia)
+  // - "local"    : Menggunakan browser LocalStorage
+  storageMode: "supabase",
 
-  // Konfigurasi jika menggunakan mode "supabase" (Opsional, buat di https://supabase.com)
+  // Konfigurasi cloud Supabase
   supabase: {
-    url: "https://YOUR_SUPABASE_PROJECT.supabase.co",
-    anonKey: "YOUR_SUPABASE_ANON_KEY",
+    url: "https://ymvstkhajozkkqfslhqv.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InltdnN0a2hham96a2txZnNsaHF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMzA5NzksImV4cCI6MjEwNTgwNjk3OX0.f6ckoIhF6lbnkEEitGwkjC3eN0qGmM89Oi9D2RuVsB4",
     tableName: "links"
   },
 
   // Konfigurasi redirect
   redirect: {
-    autoRedirectDelayMs: 600, // delay animasi pengalihan dalam milidetik (0 untuk instan)
-    defaultFallbackUrl: "https://visiyosindo.id" // URL jika slug tidak ditemukan
+    autoRedirectDelayMs: 150, // pengalihan cepat
+    defaultFallbackUrl: "https://visiyosindo.id"
   }
 };
