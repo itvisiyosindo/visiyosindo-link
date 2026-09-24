@@ -4,10 +4,10 @@ const CONFIG = {
   domain: "visiyosindo.id",
 
   // Mode Penyimpanan Data:
-  // - "php"      : Menggunakan endpoint PHP & links.json di hosting cPanel (Rekomendasi untuk hosting Anda)
-  // - "local"    : Menggunakan browser LocalStorage (offline)
-  // - "supabase" : Menggunakan cloud Supabase
-  storageMode: "php",
+  // - "local"    : Menggunakan browser LocalStorage (Cocok untuk GitHub Pages & personal use)
+  // - "supabase" : Menggunakan cloud Supabase (Rekomendasi jika link ingin diakses orang lain secara publik)
+  // - "php"      : Menggunakan endpoint PHP (khusus hosting cPanel)
+  storageMode: "local",
 
   // Konfigurasi jika menggunakan mode "supabase" (Opsional, buat di https://supabase.com)
   supabase: {
