@@ -1,0 +1,20 @@
+[
+  {
+    "id": "link-1",
+    "title": "WhatsApp Customer Service",
+    "slug": "wa-admin",
+    "targetUrl": "https://wa.me/6281234567890?text=Halo%20Visiyosindo,%20saya%20tertarik%20dengan%20layanan%20Anda",
+    "clicks": 0,
+    "createdAt": "2026-09-23T10:00:00.000Z",
+    "updatedAt": "2026-09-23T10:00:00.000Z"
+  },
+  {
+    "id": "link-2",
+    "title": "Katalog Produk & Portofolio",
+    "slug": "katalog",
+    "targetUrl": "https://drive.google.com/file/d/1example-portfolio-visiyosindo/view",
+    "clicks": 0,
+    "createdAt": "2026-09-23T10:00:00.000Z",
+    "updatedAt": "2026-09-23T10:00:00.000Z"
+  }
+]
