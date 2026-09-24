@@ -24,33 +24,10 @@ const Storage = (() => {
     }
   ];
 
-  // Inisialisasi data lokal sinkron & aman tanpa race condition
-  function initLocalStorage() {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (!stored) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultLinks));
-      }
-    } catch (e) {
-      console.warn("LocalStorage tidak dapat diakses:", e);
-    }
-  }
-
-  // URL API dinamis
-  function getApiUrl(params = "") {
-    let base = "/api/index.php";
-    if (window.location.protocol === "file:") {
-      base = "api/index.php";
-    } else if (window.location.origin) {
-      base = window.location.origin + "/api/index.php";
-    }
-    return params ? `${base}?${params}` : base;
-  }
-
-  // Inisialisasi Supabase client jika konfigurasi tersedia
+  // Inisialisasi Supabase client
   function initSupabase() {
     if (typeof supabase !== "undefined" && CONFIG.supabase && CONFIG.supabase.url && CONFIG.supabase.anonKey) {
-      if (!CONFIG.supabase.url.includes("YOUR_SUPABASE") && !window.supabaseClient) {
+      if (!window.supabaseClient) {
         try {
           window.supabaseClient = supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.anonKey);
         } catch (e) {
@@ -61,19 +38,53 @@ const Storage = (() => {
   }
   initSupabase();
 
-  // Mengambil semua link
+  function initLocalStorage() {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!stored) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultLinks));
+      }
+    } catch (e) {}
+  }
+
+  // Mengambil semua link (Cloud Supabase utama)
   async function getAllLinks() {
     initSupabase();
 
-    // 1. Jika mode Supabase aktif
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
       try {
         const { data, error } = await window.supabaseClient
           .from(CONFIG.supabase.tableName)
           .select("*")
           .order("created_at", { ascending: false });
+
         if (error) throw error;
-        return data.map(item => ({
+
+        // Auto-sinkronisasi data lama dari browser lokal jika ada yang belum masuk ke database Supabase
+        try {
+          const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (stored) {
+            const localList = JSON.parse(stored);
+            if (Array.isArray(localList) && localList.length > 0) {
+              const existingSlugs = new Set((data || []).map(d => (d.slug || "").toLowerCase().trim()));
+              for (const l of localList) {
+                const lSlug = (l.slug || "").toLowerCase().trim();
+                if (lSlug && !existingSlugs.has(lSlug)) {
+                  await window.supabaseClient.from(CONFIG.supabase.tableName).insert([{
+                    id: l.id || "link-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
+                    title: l.title || l.slug,
+                    slug: l.slug,
+                    target_url: l.targetUrl || l.target_url,
+                    clicks: l.clicks || 0
+                  }]);
+                  existingSlugs.add(lSlug);
+                }
+              }
+            }
+          }
+        } catch (syncErr) {}
+
+        const mapped = (data || []).map(item => ({
           id: item.id,
           title: item.title,
           slug: item.slug,
@@ -82,62 +93,71 @@ const Storage = (() => {
           createdAt: item.created_at,
           updatedAt: item.updated_at
         }));
+
+        // Simpan salinan di LocalStorage sebagai backup offline
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mapped));
+        } catch (e) {}
+
+        return mapped;
       } catch (e) {
-        console.warn("Gagal membaca Supabase:", e);
+        console.warn("Gagal membaca Supabase, beralih ke cache:", e);
       }
     }
 
-    // 2. Baca dari LocalStorage
+    // Fallback LocalStorage
     initLocalStorage();
-    let localLinks = [];
     try {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) localLinks = parsed;
-      }
+      if (stored) return JSON.parse(stored);
     } catch (e) {}
 
-    // 3. Sinkronkan dengan file server statis (/api/links.json) jika ada link baru dari repo
-    try {
-      const res = await fetch("/api/links.json?t=" + Date.now());
-      if (res.ok) {
-        const serverLinks = await res.json();
-        if (Array.isArray(serverLinks) && serverLinks.length > 0) {
-          const existingSlugs = new Set(localLinks.map(l => (l.slug || "").toLowerCase().trim()));
-          let hasNew = false;
-          for (const sLink of serverLinks) {
-            const sSlug = (sLink.slug || "").toLowerCase().trim();
-            if (sSlug && !existingSlugs.has(sSlug)) {
-              localLinks.push(sLink);
-              hasNew = true;
-            }
-          }
-          if (hasNew) {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localLinks));
-          }
-        }
-      }
-    } catch (e) {}
-
-    return localLinks.length > 0 ? localLinks : defaultLinks;
+    return defaultLinks;
   }
 
-  // Mengambil 1 link berdasarkan slug (case-insensitive)
+  // Mengambil 1 link spesifik berdasarkan slug (Sangat cepat dan case-insensitive)
   async function getLinkBySlug(slug) {
     const cleanSlug = (slug || "").toLowerCase().trim();
+    initSupabase();
+
+    if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
+      try {
+        const { data, error } = await window.supabaseClient
+          .from(CONFIG.supabase.tableName)
+          .select("*")
+          .ilike("slug", cleanSlug)
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          const item = data[0];
+          return {
+            id: item.id,
+            title: item.title,
+            slug: item.slug,
+            targetUrl: item.target_url,
+            clicks: item.clicks || 0,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at
+          };
+        }
+      } catch (e) {
+        console.warn("Gagal query getLinkBySlug di Supabase:", e);
+      }
+    }
+
     const links = await getAllLinks();
     return links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug) || null;
   }
 
-  // Menyimpan link baru
+  // Menyimpan link baru ke cloud database Supabase
   async function createLink({ title, slug, targetUrl }) {
-    // Mempertahankan huruf besar & kecil
     const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     if (!cleanSlug) throw new Error("Slug / Alias tidak boleh kosong!");
     if (!targetUrl) throw new Error("URL Tujuan tidak boleh kosong!");
 
-    // Cek duplikasi slug (case-insensitive)
+    const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
+
+    // Cek duplikasi slug
     const existing = await getLinkBySlug(cleanSlug);
     if (existing) {
       throw new Error(`Slug "/${cleanSlug}" sudah dipakai! Silakan pilih nama lain.`);
@@ -147,36 +167,32 @@ const Storage = (() => {
       id: "link-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
       title: title || cleanSlug,
       slug: cleanSlug,
-      targetUrl: targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`,
+      targetUrl: cleanUrl,
       clicks: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    // Simpan ke Supabase jika aktif
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      try {
-        await window.supabaseClient.from(CONFIG.supabase.tableName).insert([{
-          id: newLink.id,
-          title: newLink.title,
-          slug: newLink.slug,
-          target_url: newLink.targetUrl,
-          clicks: 0
-        }]);
-      } catch (err) {
-        console.warn("Gagal menyimpan ke Supabase:", err);
+      const { error } = await window.supabaseClient.from(CONFIG.supabase.tableName).insert([{
+        id: newLink.id,
+        title: newLink.title,
+        slug: newLink.slug,
+        target_url: newLink.targetUrl,
+        clicks: 0
+      }]);
+      if (error) {
+        throw new Error("Gagal menyimpan ke cloud: " + error.message);
       }
     }
 
-    // Selalu simpan ke LocalStorage agar langsung aktif
+    // Backup ke LocalStorage
     initLocalStorage();
     try {
       const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
       stored.unshift(newLink);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stored));
-    } catch (e) {
-      console.error("Gagal simpan ke localStorage:", e);
-    }
+    } catch (e) {}
 
     return newLink;
   }
@@ -186,7 +202,6 @@ const Storage = (() => {
     const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
 
-    // Cek duplikasi slug
     const links = await getAllLinks();
     const existingWithSameSlug = links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug.toLowerCase() && l.id !== id);
     if (existingWithSameSlug) {
@@ -194,22 +209,20 @@ const Storage = (() => {
     }
 
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      try {
-        await window.supabaseClient
-          .from(CONFIG.supabase.tableName)
-          .update({
-            title,
-            slug: cleanSlug,
-            target_url: cleanUrl,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", id);
-      } catch (err) {
-        console.warn("Gagal update Supabase:", err);
+      const { error } = await window.supabaseClient
+        .from(CONFIG.supabase.tableName)
+        .update({
+          title,
+          slug: cleanSlug,
+          target_url: cleanUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", id);
+      if (error) {
+        throw new Error("Gagal update di cloud: " + error.message);
       }
     }
 
-    // Update LocalStorage
     initLocalStorage();
     try {
       const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
@@ -223,24 +236,20 @@ const Storage = (() => {
           updatedAt: new Date().toISOString()
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stored));
-        return stored[index];
       }
     } catch (e) {}
 
     return { id, title, slug: cleanSlug, targetUrl: cleanUrl };
   }
 
-  // Menghapus link
+  // Menghapus link dari database cloud
   async function deleteLink(id) {
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      try {
-        await window.supabaseClient
-          .from(CONFIG.supabase.tableName)
-          .delete()
-          .eq("id", id);
-      } catch (err) {
-        console.warn("Gagal hapus di Supabase:", err);
-      }
+      const { error } = await window.supabaseClient
+        .from(CONFIG.supabase.tableName)
+        .delete()
+        .eq("id", id);
+      if (error) console.warn("Gagal hapus di Supabase:", error);
     }
 
     initLocalStorage();
@@ -252,26 +261,28 @@ const Storage = (() => {
     return true;
   }
 
-  // Menambah counter klik
+  // Menambah counter klik di cloud
   async function incrementClicks(slug) {
     const cleanSlug = (slug || "").toLowerCase().trim();
-    const links = await getAllLinks();
-    const link = links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug);
-    if (!link) return null;
-
-    link.clicks = (link.clicks || 0) + 1;
+    initSupabase();
 
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      window.supabaseClient
-        .from(CONFIG.supabase.tableName)
-        .update({ clicks: link.clicks })
-        .eq("id", link.id)
-        .then();
-    } else {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(links));
-    }
+      try {
+        const { data } = await window.supabaseClient
+          .from(CONFIG.supabase.tableName)
+          .select("id, clicks")
+          .ilike("slug", cleanSlug)
+          .limit(1);
 
-    return link;
+        if (data && data.length > 0) {
+          const newClicks = (data[0].clicks || 0) + 1;
+          await window.supabaseClient
+            .from(CONFIG.supabase.tableName)
+            .update({ clicks: newClicks })
+            .eq("id", data[0].id);
+        }
+      } catch (e) {}
+    }
   }
 
   // Ekspor / Impor JSON cadangan
