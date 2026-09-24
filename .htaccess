@@ -1,0 +1,17 @@
+# Apache / cPanel URL Rewriting untuk Visiyosindo Link Manager
+DirectoryIndex index.html index.php
+RewriteEngine On
+RewriteBase /
+
+# Jangan rewrite jika file atau folder fisik benar-benar ada
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Jangan ubah rute api atau resource statis
+RewriteRule ^api/ - [L]
+RewriteRule ^css/ - [L]
+RewriteRule ^js/ - [L]
+
+# Alihkan semua slug (contoh: /Judulyangakumau) ke redirect.html?go=Judulyangakumau
+RewriteRule ^([a-zA-Z0-9-_]+)/?$ redirect.html?go=$1 [L,QSA]
