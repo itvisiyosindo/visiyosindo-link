@@ -34,8 +34,19 @@ const Storage = (() => {
   ];
 
   // Inisialisasi data lokal jika belum ada
-  function initLocalStorage() {
+  async function initLocalStorage() {
     if (!localStorage.getItem(LOCAL_STORAGE_KEY)) {
+      // Coba ambil dari /api/links.json jika ada
+      try {
+        const res = await fetch("/api/links.json");
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json) && json.length > 0) {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(json));
+            return;
+          }
+        }
+      } catch (e) {}
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultLinks));
     }
   }
@@ -68,6 +79,8 @@ const Storage = (() => {
   // Mengambil semua link
   async function getAllLinks() {
     initSupabase();
+
+    // 1. Jika mode Supabase aktif
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
       try {
         const { data, error } = await window.supabaseClient
@@ -89,6 +102,7 @@ const Storage = (() => {
       }
     }
 
+    // 2. Jika mode PHP aktif
     if (CONFIG.storageMode === "php") {
       try {
         const res = await fetch(getApiUrl("action=get"));
@@ -97,11 +111,21 @@ const Storage = (() => {
           if (json.links) return json.links;
         }
       } catch (e) {
-        console.warn("API PHP belum aktif (mungkin dibuka secara offline), menggunakan LocalStorage:", e);
+        console.warn("API PHP belum aktif, menggunakan LocalStorage:", e);
       }
     }
 
-    // Coba baca file static api/links.json jika ada (berguna untuk GitHub Pages)
+    // 3. LocalStorage (Prioritas Utama untuk mode local & GitHub Pages)
+    initLocalStorage();
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+
+    // Fallback terakhir: baca /api/links.json statis
     try {
       const res = await fetch("/api/links.json");
       if (res.ok) {
@@ -110,13 +134,7 @@ const Storage = (() => {
       }
     } catch (e) {}
 
-    // Default / Fallback LocalStorage
-    initLocalStorage();
-    try {
-      return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
-    } catch {
-      return defaultLinks;
-    }
+    return defaultLinks;
   }
 
   // Mengambil 1 link berdasarkan slug
