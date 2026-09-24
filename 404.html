@@ -2,23 +2,170 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mengarahkan...</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --secondary: #0f172a;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .redirect-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+    }
+    .spinner {
+      width: 45px;
+      height: 45px;
+      border: 4px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1.25rem;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    h2 {
+      font-size: 1.35rem;
+      color: var(--secondary);
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+    }
+    p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      word-break: break-all;
+    }
+    .btn {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #1d4ed8;
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover {
+      background: #f1f5f9;
+    }
+    .error-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #fef2f2;
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.25rem;
+      font-size: 1.75rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="redirect-card" id="redirect-box">
+    <div class="spinner" id="spinner"></div>
+    <h2 id="redirect-title">Mengarahkan Anda...</h2>
+    <p id="redirect-desc">Sedang membuka tautan tujuan.</p>
+    <a id="btn-manual-redirect" href="#" class="btn" style="display: none;">Klik di sini jika tidak otomatis dialihkan</a>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/js/config.js?v=5"></script>
+  <script src="/js/storage.js?v=5"></script>
   <script>
-    // SPA Fallback untuk Static Hosting (GitHub Pages / Netlify / Vercel)
-    // Ketika pengunjung membuka visiyosindo.id/Judul, server mengirim 404.html ini.
-    // Script ini mengambil slug dari URL dan meneruskannya ke redirect.html?go=Judul
-    (function() {
+    (async function handleDirectRedirect() {
       const pathname = window.location.pathname;
-      const slug = pathname.replace(/^\/+|\/+$/g, ""); // hilangkan slash awal & akhir
-      if (slug && !slug.includes(".")) {
-        window.location.replace("/redirect.html?go=" + encodeURIComponent(slug));
-      } else {
+      const slug = decodeURIComponent(pathname.replace(/^\/+|\/+$/g, ""));
+
+      const redirectBox = document.getElementById("redirect-box");
+      const redirectTitle = document.getElementById("redirect-title");
+      const redirectDesc = document.getElementById("redirect-desc");
+      const spinner = document.getElementById("spinner");
+      const btnManual = document.getElementById("btn-manual-redirect");
+
+      if (!slug || slug.includes(".")) {
         window.location.replace("/index.html");
+        return;
+      }
+
+      try {
+        const link = await Storage.getLinkBySlug(slug);
+
+        if (!link) {
+          showError("Link Tidak Ditemukan", `Tautan "/${slug}" belum dibuat atau sudah dihapus.`);
+          return;
+        }
+
+        // Catat klik
+        await Storage.incrementClicks(slug);
+
+        redirectTitle.textContent = "Mengarahkan...";
+        redirectDesc.innerHTML = `Tujuan: <strong>${escapeHtml(link.targetUrl)}</strong>`;
+        btnManual.href = link.targetUrl;
+        btnManual.style.display = "inline-block";
+
+        // Alihkan browser langsung ke target URL tanpa melewati redirect.html
+        const delay = CONFIG.redirect.autoRedirectDelayMs || 200;
+        setTimeout(() => {
+          window.location.replace(link.targetUrl);
+        }, delay);
+
+      } catch (err) {
+        console.error(err);
+        showError("Terjadi Kesalahan", err.message);
+      }
+
+      function showError(title, message) {
+        spinner.style.display = "none";
+        redirectTitle.textContent = title;
+        redirectDesc.textContent = message;
+        redirectBox.insertAdjacentHTML("afterbegin", `<div class="error-icon">&times;</div>`);
+        btnManual.textContent = "Kembali ke Dashboard";
+        btnManual.href = "/index.html";
+        btnManual.className = "btn btn-outline";
+        btnManual.style.display = "inline-block";
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       }
     })();
   </script>
-</head>
-<body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
-  <p>Mengarahkan ke tautan tujuan...</p>
 </body>
 </html>
