@@ -231,22 +231,20 @@ document.addEventListener("DOMContentLoaded", () => {
     linkModal.classList.remove("active");
   }
 
-  // Otomatis ubah spasi menjadi tanda strip (-) saat mengetik slug
+  // Otomatis ubah spasi menjadi tanda strip (-) saat mengetik slug (mendukung huruf besar & kecil)
   linkSlugInput.addEventListener("input", () => {
     linkSlugInput.value = linkSlugInput.value
-      .toLowerCase()
       .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-_]/g, "");
+      .replace(/[^a-zA-Z0-9-_]/g, "");
   });
 
   // Otomatis sarankan slug saat mengetik judul (jika slug masih kosong)
   linkTitleInput.addEventListener("input", () => {
     if (!linkIdInput.value && !linkSlugInput.dataset.manual) {
       linkSlugInput.value = linkTitleInput.value
-        .toLowerCase()
         .trim()
         .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-_]/g, "");
+        .replace(/[^a-zA-Z0-9-_]/g, "");
     }
   });
 
@@ -259,7 +257,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     const id = linkIdInput.value;
     const title = linkTitleInput.value.trim();
-    const slug = linkSlugInput.value.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-_]/g, "");
+    const slug = linkSlugInput.value.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     const targetUrl = linkUrlInput.value.trim();
 
     try {
