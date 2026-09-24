@@ -137,20 +137,21 @@ const Storage = (() => {
     return defaultLinks;
   }
 
-  // Mengambil 1 link berdasarkan slug
+  // Mengambil 1 link berdasarkan slug (case-insensitive agar fleksibel)
   async function getLinkBySlug(slug) {
     const cleanSlug = (slug || "").toLowerCase().trim();
     const links = await getAllLinks();
-    return links.find(l => l.slug.toLowerCase().trim() === cleanSlug) || null;
+    return links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug) || null;
   }
 
   // Menyimpan link baru
   async function createLink({ title, slug, targetUrl }) {
-    const cleanSlug = slug.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-_]/g, "");
+    // Mempertahankan huruf besar & kecil, hanya spasi diubah ke strip (-) dan karakter tidak valid dibersihkan
+    const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     if (!cleanSlug) throw new Error("Slug / Alias tidak boleh kosong!");
     if (!targetUrl) throw new Error("URL Tujuan tidak boleh kosong!");
 
-    // Cek duplikasi slug
+    // Cek duplikasi slug (case-insensitive)
     const existing = await getLinkBySlug(cleanSlug);
     if (existing) {
       throw new Error(`Slug "/${cleanSlug}" sudah dipakai! Silakan pilih nama lain.`);
@@ -209,12 +210,13 @@ const Storage = (() => {
 
   // Mengubah link yang sudah ada (edit URL tujuan atau slug)
   async function updateLink(id, { title, slug, targetUrl }) {
-    const cleanSlug = slug.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-_]/g, "");
+    // Mempertahankan huruf besar & kecil
+    const cleanSlug = slug.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
     const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
 
-    // Cek duplikasi jika slug diganti
+    // Cek duplikasi jika slug diganti (case-insensitive)
     const links = await getAllLinks();
-    const existingWithSameSlug = links.find(l => l.slug.toLowerCase() === cleanSlug && l.id !== id);
+    const existingWithSameSlug = links.find(l => (l.slug || "").toLowerCase().trim() === cleanSlug.toLowerCase() && l.id !== id);
     if (existingWithSameSlug) {
       throw new Error(`Slug "/${cleanSlug}" sudah digunakan oleh link lain.`);
     }
