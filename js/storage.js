@@ -148,33 +148,44 @@ const Storage = (() => {
       updatedAt: new Date().toISOString()
     };
 
+    // Simpan ke Supabase jika aktif
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      const { data, error } = await window.supabaseClient.from(CONFIG.supabase.tableName).insert([{
-        id: newLink.id,
-        title: newLink.title,
-        slug: newLink.slug,
-        target_url: newLink.targetUrl,
-        clicks: 0
-      }]);
-      if (error) throw error;
-      return newLink;
+      try {
+        await window.supabaseClient.from(CONFIG.supabase.tableName).insert([{
+          id: newLink.id,
+          title: newLink.title,
+          slug: newLink.slug,
+          target_url: newLink.targetUrl,
+          clicks: 0
+        }]);
+      } catch (err) {
+        console.warn("Gagal menyimpan ke Supabase, tersimpan di lokal:", err);
+      }
     }
 
+    // Simpan ke PHP jika aktif
     if (CONFIG.storageMode === "php") {
-      const res = await fetch(getApiUrl("action=create"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newLink)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Gagal membuat link di server");
-      return data.link || newLink;
+      try {
+        await fetch(getApiUrl("action=create"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newLink)
+        });
+      } catch (err) {
+        console.warn("Gagal menyimpan ke PHP server, tersimpan di lokal:", err);
+      }
     }
 
-    // LocalStorage
-    const links = await getAllLinks();
-    links.unshift(newLink);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(links));
+    // Selalu simpan ke LocalStorage agar link tidak pernah hilang di browser admin
+    initLocalStorage();
+    try {
+      const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
+      stored.unshift(newLink);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stored));
+    } catch (e) {
+      console.error("Gagal simpan ke localStorage:", e);
+    }
+
     return newLink;
   }
 
@@ -191,65 +202,80 @@ const Storage = (() => {
     }
 
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      const { error } = await window.supabaseClient
-        .from(CONFIG.supabase.tableName)
-        .update({
-          title,
-          slug: cleanSlug,
-          target_url: cleanUrl,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", id);
-      if (error) throw error;
-      return true;
+      try {
+        await window.supabaseClient
+          .from(CONFIG.supabase.tableName)
+          .update({
+            title,
+            slug: cleanSlug,
+            target_url: cleanUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", id);
+      } catch (err) {
+        console.warn("Gagal update Supabase:", err);
+      }
     }
 
     if (CONFIG.storageMode === "php") {
-      const res = await fetch(getApiUrl("action=update"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title, slug: cleanSlug, targetUrl: cleanUrl })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Gagal mengupdate link");
-      return true;
+      try {
+        await fetch(getApiUrl("action=update"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, title, slug: cleanSlug, targetUrl: cleanUrl })
+        });
+      } catch (err) {
+        console.warn("Gagal update PHP:", err);
+      }
     }
 
-    // LocalStorage
-    const index = links.findIndex(l => l.id === id);
-    if (index === -1) throw new Error("Link tidak ditemukan!");
-    links[index] = {
-      ...links[index],
-      title: title || cleanSlug,
-      slug: cleanSlug,
-      targetUrl: cleanUrl,
-      updatedAt: new Date().toISOString()
-    };
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(links));
-    return links[index];
+    // Selalu update LocalStorage
+    initLocalStorage();
+    try {
+      const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
+      const index = stored.findIndex(l => l.id === id);
+      if (index !== -1) {
+        stored[index] = {
+          ...stored[index],
+          title: title || cleanSlug,
+          slug: cleanSlug,
+          targetUrl: cleanUrl,
+          updatedAt: new Date().toISOString()
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stored));
+        return stored[index];
+      }
+    } catch (e) {}
+
+    return { id, title, slug: cleanSlug, targetUrl: cleanUrl };
   }
 
   // Menghapus link
   async function deleteLink(id) {
     if (CONFIG.storageMode === "supabase" && window.supabaseClient) {
-      const { error } = await window.supabaseClient
-        .from(CONFIG.supabase.tableName)
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-      return true;
+      try {
+        await window.supabaseClient
+          .from(CONFIG.supabase.tableName)
+          .delete()
+          .eq("id", id);
+      } catch (err) {
+        console.warn("Gagal hapus di Supabase:", err);
+      }
     }
 
     if (CONFIG.storageMode === "php") {
-      const res = await fetch(getApiUrl(`action=delete&id=${encodeURIComponent(id)}`));
-      if (!res.ok) throw new Error("Gagal menghapus link di server");
-      return true;
+      try {
+        await fetch(getApiUrl(`action=delete&id=${encodeURIComponent(id)}`));
+      } catch (err) {}
     }
 
-    // LocalStorage
-    const links = await getAllLinks();
-    const filtered = links.filter(l => l.id !== id);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
+    // Selalu hapus dari LocalStorage
+    initLocalStorage();
+    try {
+      const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
+      const filtered = stored.filter(l => l.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
+    } catch (e) {}
     return true;
   }
 
