@@ -17,7 +17,7 @@ const CONFIG = {
 
   // Konfigurasi redirect
   redirect: {
-    autoRedirectDelayMs: 150, // pengalihan cepat
+    autoRedirectDelayMs: 0, // pengalihan cepat
     defaultFallbackUrl: "https://visiyosindo.id"
   }
 };
