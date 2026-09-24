@@ -156,10 +156,7 @@
         redirectTitle.textContent = title;
         redirectDesc.textContent = message;
         redirectBox.insertAdjacentHTML("afterbegin", `<div class="error-icon">&times;</div>`);
-        btnManual.textContent = "Kembali ke Dashboard";
-        btnManual.href = "/index.html";
-        btnManual.className = "btn btn-outline";
-        btnManual.style.display = "inline-block";
+        btnManual.style.display = "none";
       }
 
       function escapeHtml(str) {
